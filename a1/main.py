@@ -99,27 +99,27 @@ def tokenize(all_lines):
 
 def save_files(vocab, vocab_ns, csv_data, csv_ns_data, train_data, train_ns_data, val_data, val_ns_data, test_data, test_ns_data, labels_data):
     # Save each file as requested
-    with open('data/processed/out.csv', 'w') as file:
+    with open('a1/data/out.csv', 'w') as file:
         file.write(csv_data)
-    with open('data/processed/train.csv', 'w') as file:
+    with open('a1/data/train.csv', 'w') as file:
         file.write(train_data)
-    with open('data/processed/val.csv', 'w') as file:
+    with open('a1/data/val.csv', 'w') as file:
         file.write(val_data)
-    with open('data/processed/test.csv', 'w') as file:
+    with open('a1/data/test.csv', 'w') as file:
         file.write(test_data)
-    with open('data/processed/out_ns.csv', 'w') as file:
+    with open('a1/data/out_ns.csv', 'w') as file:
         file.write(csv_ns_data)
-    with open('data/processed/train_ns.csv', 'w') as file:
+    with open('a1/data/train_ns.csv', 'w') as file:
         file.write(train_ns_data)
-    with open('data/processed/val_ns.csv', 'w') as file:
+    with open('a1/data/val_ns.csv', 'w') as file:
         file.write(val_ns_data)
-    with open('data/processed/test_ns.csv', 'w') as file:
+    with open('a1/data/test_ns.csv', 'w') as file:
         file.write(test_ns_data)
-    with open('data/processed/labels.csv', 'w') as file:
+    with open('a1/data/labels.csv', 'w') as file:
         file.write(labels_data)
-    with open('data/processed/vocab.json', 'w') as file:
+    with open('a1/data/vocab.json', 'w') as file:
         json.dump(vocab, file)
-    with open('data/processed/vocab_ns.json', 'w') as file:
+    with open('a1/data/vocab_ns.json', 'w') as file:
         json.dump(vocab_ns, file)
 
 def main(raw_data_path):
