@@ -4,6 +4,8 @@
 import os
 import sys
 import pickle
+
+import numpy as np
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -57,8 +59,17 @@ def train(x_train, y_train, text_feature, sw):
     print(f'Building Tf-idf vectors for {text_feature.value} {sw.value}')
     tfidf_transformer = TfidfTransformer()
     x_train_tfidf = tfidf_transformer.fit_transform(x_train_count)
-    print(f'Training MNB for {text_feature.value} {sw.value}')
-    clf = MultinomialNB().fit(x_train_tfidf, y_train)
+    alpha = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+    optimal_alpha = 0.1
+    max_accuracy = 0
+
+    for val in alpha:
+        clf_trial = MultinomialNB(alpha=val).fit(x_train_tfidf, y_train)
+        accuracy_trial = evaluate(x_train, y_train, clf_trial, count_vect, tfidf_transformer)
+        if accuracy_trial['accuracy'] > max_accuracy:
+            max_accuracy = accuracy_trial['accuracy']
+            optimal_alpha = val
+    clf = MultinomialNB(alpha=optimal_alpha).fit(x_train_tfidf, y_train)
     return clf, count_vect, tfidf_transformer
 
 def evaluate(x, y, clf, count_vect, tfidf_transformer):
