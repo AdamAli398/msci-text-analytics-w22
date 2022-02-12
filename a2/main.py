@@ -9,7 +9,9 @@ import numpy as np
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+from sklearn.pipeline import Pipeline
 from enum import Enum
 
 class Stopwords(Enum):
@@ -59,18 +61,26 @@ def train(x_train, y_train, text_feature, sw):
     print(f'Building Tf-idf vectors for {text_feature.value} {sw.value}')
     tfidf_transformer = TfidfTransformer()
     x_train_tfidf = tfidf_transformer.fit_transform(x_train_count)
-    alpha = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
-    optimal_alpha = 0.1
-    max_accuracy = 0
 
-    for val in alpha:
-        clf_trial = MultinomialNB(alpha=val).fit(x_train_tfidf, y_train)
-        accuracy_trial = evaluate(x_train, y_train, clf_trial, count_vect, tfidf_transformer)
-        if accuracy_trial['accuracy'] > max_accuracy:
-            max_accuracy = accuracy_trial['accuracy']
-            optimal_alpha = val
-    clf = MultinomialNB(alpha=optimal_alpha).fit(x_train_tfidf, y_train)
+    clf = MultinomialNB().fit(x_train_tfidf, y_train)
     return clf, count_vect, tfidf_transformer
+
+def tune(x_val, y_val, train_clf, count_vect, tfidf_transformer):
+    x_val_count = count_vect.transform(x_val)
+    x_val_tfidf = tfidf_transformer.transform(x_val_count)
+
+    mnb_pipeline = Pipeline([
+        ('mnb', train_clf)
+    ])
+
+    grid_params = {
+        'mnb__alpha': np.linspace(0.25, 5, 20),
+        'mnb__fit_prior': [True, False],
+    }
+
+    val_clf = GridSearchCV(mnb_pipeline, grid_params).fit(x_val_tfidf, y_val)
+    print("Best Val Params: ", val_clf.best_params_)
+    return val_clf
 
 def evaluate(x, y, clf, count_vect, tfidf_transformer):
     x_count = count_vect.transform(x)
@@ -113,7 +123,7 @@ def print_scores(x_val, y_val, x_test, y_test, clf, count_vect, tfidf_transforme
     # test
     print('Testing')
     scores['test'] = evaluate(x_test, y_test, clf, count_vect, tfidf_transformer)
-    print(f'Accuracy for {text_feature.value} test set {sw.value}:', scores['test']['accuracy'])
+    print(f'Testing Accuracy for {text_feature.value} test set {sw.value}:', scores['test']['accuracy'])
 
 def main(data_dir):
     """
@@ -126,9 +136,10 @@ def main(data_dir):
 
         # train for each text feature
         for feature in Text_Feature:
-            clf, count_vect, tfidf_transformer = train(x_train, y_train, feature, sw)
-            save_files(clf, sw, feature, count_vect, tfidf_transformer)
-            print_scores(x_val, y_val, x_test, y_test, clf, count_vect, tfidf_transformer, feature, sw)
+            train_clf, count_vect, tfidf_transformer = train(x_train, y_train, feature, sw)
+            val_clf = tune(x_val, y_val, train_clf, count_vect, tfidf_transformer)
+            save_files(val_clf, sw, feature, count_vect, tfidf_transformer)
+            print_scores(x_val, y_val, x_test, y_test, val_clf.best_estimator_, count_vect, tfidf_transformer, feature, sw)
 
 if __name__ == '__main__':
     main(sys.argv[1])

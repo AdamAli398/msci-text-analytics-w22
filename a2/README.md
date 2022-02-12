@@ -7,12 +7,12 @@ To run this, go to your terminal and enter the following from the root folder:
 
 | Stopwords removed | text features    | Accuracy (test set) |
 |-------------------|------------------|---------------------|
-| yes               | unigrams         | 80.5225%            |
-| yes               | bigrams          | 77.925%             |
-| yes               | unigrams+bigrams | 82.30875%           |
-| no                | unigrams         | 80.82125%           |
-| no                | bigrams          | 82.42%              |
-| no                | unigrams+bigrams | 83.305%             |
+| yes               | unigrams         | 79.17125%           |
+| yes               | bigrams          | 73.1525%            |
+| yes               | unigrams+bigrams | 80.12625%           |
+| no                | unigrams         | 79.3825%            |
+| no                | bigrams          | 78.5825%            |
+| no                | unigrams+bigrams | 81.23625%           |
 
 To run the inference.py file that allows you to predict the positive/negative nature of any sentence in a .txt file, 
 run the following command:\
