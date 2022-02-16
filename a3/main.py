@@ -39,7 +39,6 @@ def main(data_dir):
     """
 
     reviews = read_dataset(data_dir)
-    # sentences = [line[0].strip().split() for line in reviews]
     sentences = tokenize(reviews)
     model = Word2Vec(sentences, min_count=1, vector_size=100, window=5, workers=4)
     model.save('a3/data/w2v.model')
