@@ -16,7 +16,7 @@ To run this, go to your terminal and enter the following from the root folder:
 
 To run the inference.py file that allows you to predict the positive/negative nature of any sentence in a .txt file, 
 run the following command:\
-```python3 a2/inference.py [.txt file name] [classifier type, i.e. mnb_uni]```
+```python3 inference.py [.txt file name] [classifier type, i.e. mnb_uni]```
 
-Using a given example in this repo, substitute the .txt file name with ```data/raw/a2_inference_data.txt``` and use any
+Using a given example in this repo, substitute the .txt file name with ```../data/raw/a2_inference_data.txt``` and use any
 text feature desired as the second argument.

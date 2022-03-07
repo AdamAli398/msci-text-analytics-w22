@@ -16,13 +16,13 @@ def main(text_path, model_code):
         sample_text = f.readlines()
     sample_text = [line.strip() for line in sample_text]
 
-    with open('a2/data/{}.pkl'.format(model_code), 'rb') as f:
+    with open('data/{}.pkl'.format(model_code), 'rb') as f:
         clf = pickle.load(f)
 
-    with open('a2/data/count_vect{}.pkl'.format(sliced_model_code), 'rb') as f:
+    with open('data/count_vect{}.pkl'.format(sliced_model_code), 'rb') as f:
         count_vect = pickle.load(f)
 
-    with open('a2/data/tfidf_transformer{}.pkl'.format(sliced_model_code), 'rb') as f:
+    with open('data/tfidf_transformer{}.pkl'.format(sliced_model_code), 'rb') as f:
         tfidf_transformer = pickle.load(f)
 
     return ['{} => {}'.format(line, predict(line, clf, count_vect, tfidf_transformer))
