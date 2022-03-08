@@ -2,69 +2,45 @@
 # A4
 
 import os
-import os.path
 import sys
-import re
-import nltk
-import json
-import numpy as np
 import keras
+import numpy as np
 import tensorflow as tf
+import json
 
-from tqdm import tqdm
+from keras.models import Sequential
+from keras.layers import Dropout, Flatten
+from keras.preprocessing.text import text_to_word_sequence
+from keras.preprocessing.sequence import pad_sequences
 from gensim.models import Word2Vec
 from config import config
-from keras.models import Model
-from keras.layers import Input, LSTM, Embedding, Dense, TextVectorization
+from keras.layers import Embedding, Dense, TextVectorization
 
-def read_dataset(data_dir):
-    with open(os.path.join(data_dir, 'pos.txt')) as file:
-        pos_lines = file.readlines()
-    with open(os.path.join(data_dir, 'neg.txt')) as file:
-        neg_lines = file.readlines()
-    all_lines = pos_lines + neg_lines
-    return list(zip(all_lines, [1] * len(pos_lines) + [0] * len(neg_lines)))
+def read_csv(data_path):
+    with open(data_path) as f:
+        data = f.readlines()
+    return data
 
-def tokenize(sentence, word2token):
-    tokenized = []
-    for w in sentence.lower().split():
-        token_id = word2token.get(w)
-        if token_id is None:
-            tokenized.append(word2token['<unk>'])
-        else:
-            tokenized.append(token_id)
-    return tokenized
+def load_csv_data(data_dir):
+    x_train = read_csv(os.path.join(data_dir, 'train.csv'))
+    x_val = read_csv(os.path.join(data_dir, 'val.csv'))
+    x_test = read_csv(os.path.join(data_dir, 'test.csv'))
 
-def get_sentences(reviews):
-    sentences = []
+    train_sentences = [' '.join(line.split(',')) for line in x_train]
 
-    for idx, line in tqdm(enumerate(reviews)):
-        # Remove regex chars from each line: !"#$%&()*+/:;<=>@[//]^`{|}~\t\n
-        sentence_no_punctuation = re.sub(r"!|\"|#|\$|%|&|\(|\)|\*|\+|/|:|;|<|=|>|@|\[|\\|\]|\^|`|\{|\|\}|~|\t|\n", ' ', line[0])
+    x_train = ['<sos>,' + ' '.join(line.split()[:config['max_seq_len'] - 2]) + ',<eos>' for line in x_train]
+    x_val = ['<sos>,' + ' '.join(line.split()[:config['max_seq_len'] - 2]) + ',<eos>' for line in x_val]
+    x_test = ['<sos>,' + ' '.join(line.split()[:config['max_seq_len'] - 2]) + ',<eos>' for line in x_test]
 
-        # Split lines into tokenized words
-        tokens = nltk.word_tokenize(sentence_no_punctuation.lower())
+    labels = read_csv(os.path.join(data_dir, 'labels.csv'))
+    labels = [int(label) for label in labels]
 
-        # Append tokenized words into array
-        sentences.append(tokens)
+    y_train = labels[:len(x_train)]
+    y_val = labels[len(x_train): len(x_train)+len(x_val)]
+    y_test = labels[-len(x_test):]
+    return x_train, x_val, x_test, y_train, y_val, y_test, train_sentences
 
-    return sentences
-
-def train_w2v_model(sentences):
-    model = Word2Vec(sentences, min_count=1, vector_size=100, window=5, workers=4)
-    model.save('a4/data/w2v.model')
-    return model
-
-def load_autoencoder_data(data_dir):
-    with open(os.path.join(data_dir, 'pos.txt')) as file:
-        pos_lines = file.readlines()
-    with open(os.path.join(data_dir, 'neg.txt')) as file:
-        neg_lines = file.readlines()
-    all_lines = pos_lines + neg_lines
-    return ['<sos> ' + ' '.join(line.split()[:config['max_seq_len'] - 2]) + ' <eos>'
-            for line in all_lines]
-
-def build_emb_mat(data_dir, vocab, w2v):
+def build_emb_mat(vocab, w2v):
     """
     Build the embedding matrix which will be used to initialize weights of
     the embedding layer in our seq2seq architecture
@@ -77,7 +53,7 @@ def build_emb_mat(data_dir, vocab, w2v):
     embedding_dim = config['embedding_dim']
     embedding_matrix = np.zeros((vocab_size, embedding_dim))
 
-    # randomly initizlize embeddings for the special tokens
+    # randomly initialize embeddings for the special tokens
     # you can play with different types of initializers
     embedding_matrix[0] = np.random.random((1, embedding_dim))
     embedding_matrix[1] = np.random.random((1, embedding_dim))
@@ -86,9 +62,7 @@ def build_emb_mat(data_dir, vocab, w2v):
     for i, word in enumerate(vocab):
         # since a word in the vocab of our vectorizer is actually stored as
         # byte values, we need to decode them as strings explicitly
-        # TODO: check if word below needs to be decoded, already a string?
         if not isinstance(word, str):
-            print("not a string")
             word = word.decode('utf-8')
         try:
             # again, +4 for the four special tokens in our vocab
@@ -100,14 +74,83 @@ def build_emb_mat(data_dir, vocab, w2v):
         except KeyError as e:
             # skip any oov words from the perspective of our trained w2v model
             continue
+
     # save the two dicts
-    with open(os.path.join(data_dir, 'token2word.json'), 'w') as f:
+    with open('a4/data/token2word.json', 'w') as f:
         json.dump(token2word, f)
-    with open(os.path.join(data_dir, 'word2token.json'), 'w') as f:
+    with open('a4/data/word2token.json', 'w') as f:
         json.dump(word2token, f)
     return embedding_matrix, word2token
 
-def main(data_dir):
+def tokenize(sentence, word2token):
+    tokenized = []
+    for w in sentence:
+        w = w.lower()
+        token_id = word2token.get(w)
+        if token_id is None:
+            tokenized.append(word2token['<unk>'])
+        else:
+            tokenized.append(token_id)
+    return tokenized
+
+def convert_csv_to_seq(lines, labels, word2token):
+    # Pre-processing
+    word_seq = [text_to_word_sequence(line, filters='!\"#$%&()*+,-./:;=?@[\\]^_`{|}~\t\n') for line in lines]
+
+    X = [tokenize(line, word2token) for line in word_seq]
+    X = pad_sequences(X, maxlen=config['max_seq_len'], padding='post', truncating='post', value=1)
+
+    y = [label for label in labels]
+
+    return X, y
+
+def build_nn(embedding_matrix, vocab, activation_type, X_train, y_train, X_val, y_val, X_test, y_test):
+    print(f"Building {activation_type} neural network model")
+    # Build Sequential model by stacking neural net units
+    model = Sequential()
+    model.add(Embedding(
+        input_dim=len(vocab) + 4,
+        output_dim=config['embedding_dim'],
+        embeddings_initializer=keras.initializers.Constant(embedding_matrix),
+        trainable=False,
+        input_length=config['max_seq_len'],
+        name='word_embedding_layer'),
+    )
+    model.add(Flatten())
+    model.add(Dense(
+        config['embedding_dim'],
+        activation=activation_type,
+        name='hidden_layer'),
+    )
+    model.add(Dropout(0.23))
+    model.add(Dense(
+        2,
+        activation='softmax',
+        kernel_regularizer='l2',
+        name='output_layer'),
+    )
+    # model.summary()
+
+    model.compile(
+        loss='binary_crossentropy',
+        optimizer='adam',
+        metrics=['accuracy'],
+    )
+    model.fit(
+        X_train,
+        y_train,
+        batch_size=config['batch_size'],
+        epochs=config['n_epochs'],
+        validation_data=(X_val, y_val),
+    )
+
+    model.save('a4/data/nn_' + activation_type + '.model')
+
+    score, acc = model.evaluate(X_test, y_test, batch_size=config['batch_size'])
+    print(activation_type)
+    print("Accuracy on Test Set = {0:4.3f}".format(acc))
+
+def main(a1_data_dir):
     """
     loads the pos.txt and neg.txt, trains and saves a model using gensim Word2Vec
     """
@@ -116,110 +159,40 @@ def main(data_dir):
     else:
         return
 
-    # Load autoencoder data format
-    print('Loading autoencoder data')
-    x_lines = load_autoencoder_data(data_dir)
-    # Uncomment next line to decrease dataset size for quick testing - also necessary when computer does not have
-    # enough RAM or memory to deal with the dataset size
-    x_lines = x_lines[:1000]
+    # Load CSV Data from A1
+    X_train, X_val, X_test, y_train, y_val, y_test, train_sentences = load_csv_data(a1_data_dir)
 
     vectorizer = TextVectorization(max_tokens=config['max_vocab_size'],
                                    output_sequence_length=config['max_seq_len'])
-    text_data = tf.data.Dataset.from_tensor_slices(x_lines).batch(config['batch_size'])
+    text_data = tf.data.Dataset.from_tensor_slices(train_sentences).batch(config['batch_size'])
     print('Building vocabulary')
     vectorizer.adapt(text_data)
-    # NOTE: in this vocab, index 0 is reserved for padding and 1 is reserved
-    # for out of vocabulary tokens
     vocab = vectorizer.get_vocabulary()
 
-    print('Building embedding matrix')
-    # This matrix will be used to initialze weights in the embedding layer
-    embedding_matrix, word2token = build_emb_mat(data_dir, vocab, w2v)
-    print('embedding_matrix.shape => {}'.format(embedding_matrix.shape))
+    # Create embedding matrix
+    print('Creating embedding matrix')
+    embedding_matrix, word2token = build_emb_mat(vocab, w2v)
 
-    print('Building Seq2Seq model')
+    # Convert CSV loaded data to split sequences
+    X_train, y_train = convert_csv_to_seq(X_train, y_train, word2token)
+    X_val, y_val = convert_csv_to_seq(X_val, y_val, word2token)
+    X_test, y_test = convert_csv_to_seq(X_test, y_test, word2token)
 
-    # build the embedding layer to convert token sequences into embeddings
-    # set trainable to True if you wish to further finetune the embeddings.
-    # It will increase train time but may yield better results. Try it out
-    # on a more complex task (like neural machine translation)!
-    embedding_layer = Embedding(
-        input_dim=len(vocab) + 4,
-        output_dim=config['embedding_dim'],
-        embeddings_initializer=keras.initializers.Constant(embedding_matrix),
-        trainable=False,
-    )
+    # Convert y sets to 2 dimensional tuple: 1->(1,0), 0->(0,1)
+    y_train = [(1, 0) if y == 1 else (0, 1) for y in y_train]
+    y_val = [(1, 0) if y == 1 else (0, 1) for y in y_val]
+    y_test = [(1, 0) if y == 1 else (0, 1) for y in y_test]
 
-    # build the encoding layers
-    # encoder_inputs accepts padded tokenized sequences as input,
-    # which would be converted to embeddings by the embedding_layer
-    # finally, the embedded sequences are fed to the encoder LSTM to get
-    # encodings (or vector representation) of the input sentences
-    # you can add droputs the input/embedding layers and make your model robust
-    encoder_inputs = Input((None,), name='enc_inp')
-    enc_embedding = embedding_layer(encoder_inputs)
-    # you can choose a GRU/Dense layer as well to keep things easier
-    # note that we are not using the encoder_outputs for the given generative
-    # task, but you'll need it for classification
-    # Also, there hidden dimension is currently equal to the embedding dimension
-    _, state_h, state_c = LSTM(config['embedding_dim'],  # try a different value
-                               return_state=True,
-                               name='enc_lstm')(enc_embedding)
-    encoder_states = [state_h, state_c]
+    X_train = np.array(X_train)
+    X_test = np.array(X_test)
+    X_val = np.array(X_val)
+    y_train = np.array(y_train)
+    y_test = np.array(y_test)
+    y_val = np.array(y_val)
 
-    # build the decoding layers
-    # decoder_inputs and dec_embedding serve similar purposes as in the encoding
-    # layers. Note that we are using the same embedding_layer to convert
-    # token sequences to embeddings while encoding and decoding.
-    # In this case, we initialize the decoder using `encoder_states`
-    # as its initial state (i.e. vector representation learned by the encoder).
-    decoder_inputs = Input((None,), name='dec_inp')
-    dec_embedding = embedding_layer(decoder_inputs)
-    dec_lstm = LSTM(config['embedding_dim'],
-                    return_state=True,
-                    return_sequences=True,
-                    name='dec_lstm')
-    dec_outputs, _, _ = dec_lstm(dec_embedding, initial_state=encoder_states)
-    # finally, we add a final fully connected layer which performs the
-    # transformation of decoder outputs to logits vectors
-    dec_dense = Dense(len(vocab) + 4, activation='softmax', name='out')
-    output = dec_dense(dec_outputs)
+    build_nn(embedding_matrix, vocab, 'relu', X_train, y_train, X_val, y_val, X_test, y_test)
+    build_nn(embedding_matrix, vocab, 'sigmoid', X_train, y_train, X_val, y_val, X_test, y_test)
+    build_nn(embedding_matrix, vocab, 'tanh', X_train, y_train, X_val, y_val, X_test, y_test)
 
-    # Define the model that will turn
-    # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
-    model = Model([encoder_inputs, decoder_inputs], output)
-    model.compile(optimizer='rmsprop', loss='categorical_crossentropy')
-    print(model.summary())
-
-    # switching to a generator instead of creating large matrices can reduce memory consumption a lot.
-    encoder_input_data = np.ones(
-        (len(x_lines), config['max_seq_len']),
-        dtype='float32')
-    decoder_input_data = np.ones(
-        (len(x_lines), config['max_seq_len']),
-        dtype='float32')
-    decoder_target_data = np.zeros(
-        (len(x_lines), config['max_seq_len'], len(vocab) + 4),
-        dtype='float32')
-
-    for i, input_text in enumerate(x_lines):
-        tokenized_text = tokenize(input_text, word2token)
-        for j in range(len(tokenized_text)):
-            encoder_input_data[i, j] = tokenized_text[j]
-            decoder_input_data[i, j] = tokenized_text[j]
-            decoder_target_data[i, j, tokenized_text[j]] = 1.0
-
-    print('Training model')
-    model.compile(optimizer='rmsprop', loss='categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    # Epochs selected at 500 because after that there is minimal change in accuracy of model
-    model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
-              batch_size=config['batch_size'],
-              epochs=500,
-              validation_split=0.2)
-
-    # Save model
-    model.save('a4/data/ae.model')
 if __name__ == '__main__':
     main(sys.argv[1])
